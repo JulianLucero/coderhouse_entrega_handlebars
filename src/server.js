@@ -1,26 +1,64 @@
-const express = require ('express')
-const handlebars = require('express-handlebars')
-const {Contenedor} = require("./contenedor")
-const contenedor = new Contenedor("productos.json")
-const app = express()
+const express = require('express');
+const http = require('http');
+const app = express();
 
-app.use(express.json())
-app.use(express.urlencoded({extended:true}))
-app.use(express.static('public'))
+const { Server } = require('socket.io');
+const { engine } = require('express-handlebars');
+const Contenedor = require('./contenedor')
 
-app.set('views', './src/views')
-app.set('view engine' , 'hbs')
+const server = http.createServer(app);
+const io = new Server(server);
+
+const contenedor = new Contenedor("productos.json");
+const chat = new Contenedor("chat.json")
 
 
-app.engine(
-    'hbs',
-    handlebars.engine({
-        extname:".hbs",
-        defaultLayout:'index.hbs',
-        layoutsDir: __dirname + '/views/layouts',
-        partialsDir: __dirname + '/views/partials'
+
+
+app.use(express.json());
+app.use(express.urlencoded({extended:true}));
+app.use(express.static('public'));
+
+app.set('views', './src/views');
+app.set('view engine', 'hbs');
+
+app.engine('hbs', engine({
+    extname: '.hbs',
+    defaultLayout: 'index.hbs',
+    layoutsDir: __dirname + '/views/layouts',
+    partialsDir: __dirname + '/views/partials'
+}))
+
+io.on('connection', async(socket) => {
+    console.log('🟢 Usuario conectado')
+    
+    const productos = await contenedor.getAll();
+    socket.emit('bienvenidoLista', productos )
+    
+    const mensajes = await chat.getAll();
+    socket.emit('listaMensajesBienvenida', mensajes)
+    
+    socket.on('nuevoMensaje', async(data) => {
+        await chat.save(data);
+        
+        const mensajes = await chat.getAll();
+        io.sockets.emit('listaMensajesActualizada', mensajes)
     })
-)
+
+    socket.on('productoAgregado', async(data) => {
+        console.log('Alguien presionó el click')
+        await contenedor.save(data);
+        
+        const productos = await contenedor.getAll();
+        io.sockets.emit('listaActualizada', productos);
+    })
+    
+    socket.on('disconnect', () => {
+        console.log('🔴 Usuario desconectado')
+    })
+    
+})
+
 
 app.get('/productos', async(req, res) => {
     const productos = await contenedor.getAll();
@@ -38,11 +76,9 @@ app.get('/', (req,res) => {
 })
 
 
-// configuro el puerto 
-const port = process.env.PORT || 8080
-
-// configuro en que puerto se escucha
-app.listen(port, err => {
-    if(err) throw new Error(`Error on server listen: ${err}`)
-    console.log(`Server running on port ${port}`)
+const PORT = 13213;
+server.listen(PORT, () => {
+    console.log(` >>>>> 🚀 Server started at http://localhost:${PORT}`)
 })
+
+server.on('error', (err) => console.log(err))
