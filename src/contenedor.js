@@ -130,4 +130,4 @@ class Contenedor {
   }
 }
 
-module.exports = {Contenedor};
+module.exports = Contenedor;
